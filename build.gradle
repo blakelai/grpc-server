@@ -1,0 +1,109 @@
+buildscript {
+  repositories {
+    mavenCentral()
+  }
+  dependencies {
+    classpath 'com.google.protobuf:protobuf-gradle-plugin:0.8.12'
+  }
+}
+
+plugins {
+  id 'java'
+  id 'application'
+  id 'com.github.johnrengelman.shadow' version '5.0.0'
+  id "com.google.protobuf" version "0.8.12"
+}
+
+group = 'com.github.blakelai'
+version = '1.0.0-SNAPSHOT'
+
+repositories {
+  mavenCentral()
+}
+
+ext {
+  vertxVersion = '3.8.5'
+  vertxGrpcVersion = '1.25.0'
+  daggerVersion = '2.26'
+  junitJupiterEngineVersion = '5.4.0'
+}
+
+application {
+  mainClassName = 'io.vertx.core.Launcher'
+}
+
+sourceCompatibility = '1.8'
+
+def mainVerticleName = 'com.github.blakelai.grpc.MainVerticle'
+def watchForChange = 'src/**/*'
+def doOnChange = './gradlew classes'
+def jvmArgs = ["-Dvertx.logger-delegate-factory-class-name=io.vertx.core.logging.SLF4JLogDelegateFactory"]
+
+sourceSets {
+  main {
+    java {
+      srcDir "$buildDir/generated/source/proto/main/java"
+    }
+  }
+}
+
+dependencies {
+  implementation "io.vertx:vertx-rx-java2:$vertxVersion"
+  implementation "io.vertx:vertx-grpc:$vertxVersion"
+  implementation "io.vertx:vertx-reactive-streams:$vertxVersion"
+
+  implementation "com.google.dagger:dagger:$daggerVersion"
+  annotationProcessor "com.google.dagger:dagger-compiler:$daggerVersion"
+
+  implementation "org.apache.logging.log4j:log4j-slf4j-impl:2.13.1"
+
+  testImplementation "io.vertx:vertx-junit5:$vertxVersion"
+  testRuntimeOnly "org.junit.jupiter:junit-jupiter-engine:$junitJupiterEngineVersion"
+  testImplementation "org.junit.jupiter:junit-jupiter-api:$junitJupiterEngineVersion"
+}
+
+protobuf {
+  protoc {
+    artifact = 'com.google.protobuf:protoc:3.7.0'
+  }
+  plugins {
+    grpc {
+      artifact = "io.vertx:protoc-gen-grpc-java:$vertxGrpcVersion"
+    }
+  }
+  generateProtoTasks {
+    ofSourceSet('main').each { task ->
+      task.plugins {
+        grpc {
+          outputSubDir = 'java'
+        }
+      }
+    }
+  }
+}
+
+shadowJar {
+  classifier = 'fat'
+  manifest {
+    attributes 'Main-Verticle': mainVerticleName
+  }
+  mergeServiceFiles {
+    include 'META-INF/services/io.vertx.core.spi.VerticleFactory'
+  }
+}
+
+test {
+  useJUnitPlatform()
+  testLogging {
+    events 'PASSED', 'FAILED', 'SKIPPED'
+  }
+}
+
+run {
+  applicationDefaultJvmArgs = jvmArgs
+  args = ['run', mainVerticleName, "--redeploy=$watchForChange", "--launcher-class=$mainClassName", "--java-opts=" + jvmArgs.join(' '), "--on-redeploy=$doOnChange"]
+}
+
+runShadow {
+  args = jvmArgs
+}
